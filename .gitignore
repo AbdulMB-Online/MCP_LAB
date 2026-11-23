@@ -1,0 +1,19 @@
+# Local Python environment
+.venv/
+
+# Python and tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Generated test reports
+reports/
+
+# Local secrets; allow a future example file
+.env
+.env.*
+!.env.example
+
+# macOS metadata
+.DS_Store

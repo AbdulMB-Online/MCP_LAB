@@ -1,0 +1,5 @@
+# Test runner
+pytest==9.2.0
+
+# Lint and formatting checks
+ruff==0.17.6
