@@ -14,9 +14,7 @@ import pytest
 from mcp import Client
 
 
-def _wait_for_server(
-    process: subprocess.Popen[str], port: int, output: TextIO
-) -> None:
+def _wait_for_server(process: subprocess.Popen[str], port: int, output: TextIO) -> None:
     deadline = time.monotonic() + 10
 
     while time.monotonic() < deadline:
