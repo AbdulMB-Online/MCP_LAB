@@ -1,0 +1,11 @@
+services:
+  dev:
+    image: mcp-lab:dev
+    build:
+      context: .
+      target: development
+    volumes:
+      - .:/app
+    init: true
+    stdin_open: true
+    tty: true

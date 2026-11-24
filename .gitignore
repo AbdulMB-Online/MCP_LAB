@@ -7,8 +7,25 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Generated test reports
+# Python packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Generated test and coverage reports
 reports/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Local submission evidence and generated documents
+screenshots/
+output/
+tmp/
+
+# Local contributor instructions
+AGENTS.md
 
 # Local secrets; allow a future example file
 .env
