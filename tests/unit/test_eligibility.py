@@ -7,6 +7,7 @@ from functools import partial
 import pytest
 
 from mcp_lab.server.eligibility import check_request_eligibility
+from mcp_lab.server.equipment import get_employee_info
 from mcp_lab.server.models import (
     EligibilityDecision,
     Employee,
@@ -180,3 +181,13 @@ class TestReviewReasons:
             employee=employee, request_kind="additional", replacement_asset_id="LAP-100"
         )
         _assert_review(decision, "supplied replacement asset")
+
+
+@pytest.mark.parametrize("item", ["laptop", "gaming_console"])
+def test_future_monitor_blocks_both_tools(employee: Employee, item: str) -> None:
+    monitor = EquipmentAsset("MON-001", "monitor", date(2026, 11, 25), "active")
+    record = replace(employee, equipment_history=(monitor,))
+
+    with pytest.raises(ValueError, match="future issue date"):
+        get_employee_info("EMP-001", employees={"EMP-001": record}, as_of=AS_OF)
+    _assert_review(_check(employee=record, item=item), "future issue date")

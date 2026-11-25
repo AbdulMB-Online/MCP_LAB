@@ -53,8 +53,8 @@ def check_request_eligibility(
     """Apply role prohibitions and rules for issuing and replacing equipment."""
     if employee is None:
         return _review("The employee could not be verified.")
-    if employee.start_date > as_of:
-        return _review("The employee record has a future start date.")
+    if error := employee.date_error(as_of):
+        return _review(error)
 
     item = _normalize_item(item)
 
@@ -80,8 +80,6 @@ def check_request_eligibility(
         return _review("The allocation policy is invalid.")
 
     item_history = [asset for asset in history if _normalize_item(asset.item) == item]
-    if any(asset.issued_on > as_of for asset in item_history):
-        return _review("The equipment history contains a future issue date.")
     if replacement_asset_id is not None and request_kind != "replacement":
         return _review("Clarify the request intent for the supplied replacement asset.")
 
