@@ -29,3 +29,6 @@ jobs:
 
       - name: Check formatting
         run: docker run --rm mcp-lab:ci python -m ruff format --check .
+
+      - name: Run pytest
+        run: docker run --rm mcp-lab:ci python -m pytest
