@@ -30,7 +30,11 @@ Confirmed empty history means no equipment; missing history means unknown. Use t
 
 Approve replacements only when the identified asset is due and the resulting active allocation remains within policy. Never invent missing facts.
 
+A future start date or issue date anywhere in the employee record blocks an automatic decision. Employee lookup reports an invalid record and eligibility escalates before applying item policy.
+
 Persist each escalation with a review ID, supplied employee ID, request, reason, and timestamp, even when employee identity is unverified. Confirm escalation only after storage succeeds. Tool failures must prevent unsupported decisions.
+
+Assign a request ID at intake. For manual calls, run the client's `prepare-review` command once and save its JSON. Send that same JSON to `flag_for_human_review` on each attempt, including after a timeout. A separate request receives its own ID even if the text is identical.
 
 ## Demonstrations and Testing
 

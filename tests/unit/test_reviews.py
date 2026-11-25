@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from mcp_lab.client import prepare_review
 from mcp_lab.server.database import initialize_database
 from mcp_lab.server.models import ReviewReceipt
 from mcp_lab.server.reviews import flag_for_human_review
@@ -49,7 +50,6 @@ def test_persists_unverified_employee_review(
         employee_id="EMP-999",
         request="I need a laptop",
         reason="Employee not found",
-        request_id=None,
     )
 
     assert receipt["outcome"] == "escalated"
@@ -118,3 +118,20 @@ def test_rejects_blank_fields(
         submit(**{field: "   "})
 
     assert db.execute("SELECT count(*) FROM equipment_requests").fetchone() == (0,)
+
+
+def test_missing_request_id_cannot_create_review(review_db: Path) -> None:
+    with pytest.raises(TypeError, match="request_id"):
+        flag_for_human_review("EMP-001", "Laptop", "Missing history", db_path=review_db)
+
+
+def test_retry_after_lost_receipt_keeps_one_review(
+    review_db: Path, db: sqlite3.Connection
+) -> None:
+    request = prepare_review("EMP-001", "Laptop", "Missing history")
+    first = flag_for_human_review(**request, db_path=review_db)
+    retry = flag_for_human_review(**request, db_path=review_db)
+    assert first == retry
+    assert db.execute("SELECT count(*) FROM human_reviews").fetchone() == (1,)
+    other = prepare_review("EMP-001", "Laptop", "Missing history")
+    assert other["request_id"] != request["request_id"]

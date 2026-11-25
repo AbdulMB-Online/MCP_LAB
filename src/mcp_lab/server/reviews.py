@@ -14,14 +14,13 @@ def flag_for_human_review(
     reason: str,
     *,
     db_path: Path,
-    request_id: str | None = None,
+    request_id: str,
 ) -> ReviewReceipt:
     """Record an escalation, reusing the receipt on an identical request ID retry."""
     if not employee_id.strip() or not request.strip() or not reason.strip():
         raise ValueError("Employee ID, request, and reason must be nonempty.")
-    if request_id is not None and not request_id.strip():
-        raise ValueError("Request ID must be nonempty when supplied.")
-    request_id = request_id or f"REQ-{uuid4().hex}"
+    if not isinstance(request_id, str) or not request_id.strip():
+        raise ValueError("A nonempty request ID is required.")
 
     uri = f"{db_path.resolve().as_uri()}?mode=rw"
     with closing(sqlite3.connect(uri, uri=True)) as connection, connection:

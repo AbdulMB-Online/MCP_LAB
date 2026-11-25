@@ -82,9 +82,9 @@ def flag_for_human_review(
     employee_id: str,
     request: str,
     reason: str,
-    request_id: str | None = None,
+    request_id: str,
 ) -> ReviewReceipt:
-    """Record a human review. Reuse the request ID when retrying a call."""
+    """Record a human review using the ID assigned at intake. Reuse it for retries."""
     try:
         return reviews.flag_for_human_review(
             employee_id, request, reason, db_path=_DB_PATH, request_id=request_id

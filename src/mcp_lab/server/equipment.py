@@ -21,11 +21,9 @@ def get_employee_info(
         employee = employees[employee_id]
     except KeyError as error:
         raise EmployeeNotFoundError(f"Unknown employee ID {employee_id!r}") from error
+    if error := employee.date_error(as_of):
+        raise ValueError(error)
     start_date = employee.start_date
-    if start_date > as_of:
-        raise ValueError(
-            f"Employee {employee_id!r} start date is after the lookup date"
-        )
 
     anniversary_pending = (as_of.month, as_of.day) < (
         start_date.month,
@@ -35,10 +33,6 @@ def get_employee_info(
     current_equipment: list[CurrentEquipment] | None = None
     history = employee.equipment_history
     if history is not None:
-        if any(asset.issued_on > as_of for asset in history):
-            raise ValueError(
-                f"Employee {employee_id!r} has an asset with a future issue date"
-            )
         current_equipment = [
             {
                 "asset_id": asset.asset_id,

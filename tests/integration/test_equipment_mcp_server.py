@@ -200,6 +200,11 @@ def test_equipment_server_records_review_once(
             "request_id": "REQ-HTTP-001",
         }
         async with asyncio.timeout(10), Client(equipment_server_url) as client:
+            tools = (await client.list_tools()).tools
+            review_tool = next(
+                tool for tool in tools if tool.name == "flag_for_human_review"
+            )
+            assert "request_id" in review_tool.input_schema["required"]
             first = await client.call_tool("flag_for_human_review", arguments)
             retry = await client.call_tool("flag_for_human_review", arguments)
             assert not first.is_error and not retry.is_error
