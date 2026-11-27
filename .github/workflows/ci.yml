@@ -30,5 +30,11 @@ jobs:
       - name: Check formatting
         run: docker run --rm mcp-lab:ci python -m ruff format --check .
 
-      - name: Run pytest
-        run: docker run --rm mcp-lab:ci python -m pytest
+      - name: Enforce unit test line coverage
+        run: docker run --rm mcp-lab:ci python -m pytest tests/unit --cov --cov-report=term-missing --cov-fail-under=100
+
+      - name: Report unit test branch coverage
+        run: docker run --rm mcp-lab:ci python -m pytest tests/unit --cov --cov-branch --cov-report=term-missing
+
+      - name: Run integration tests
+        run: docker run --rm mcp-lab:ci python -m pytest tests/integration

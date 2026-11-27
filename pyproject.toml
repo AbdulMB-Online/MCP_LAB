@@ -18,6 +18,15 @@ dependencies = { file = ["requirements.txt"] }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["socket: starts an MCP server on a real loopback socket"]
+
+[tool.coverage.run]
+source = ["src/mcp_lab"]
+
+[tool.coverage.report]
+include_namespace_packages = true
+# Unit tests exercise main() directly. Socket smoke tests launch the modules.
+exclude_also = ['^if __name__ == "__main__":']
 
 [tool.ruff]
 target-version = "py312"

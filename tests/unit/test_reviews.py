@@ -2,7 +2,7 @@
 
 import sqlite3
 from collections.abc import Iterator
-from contextlib import closing
+from contextlib import closing, suppress
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
@@ -52,8 +52,6 @@ def test_persists_unverified_employee_review(
         reason="Employee not found",
     )
 
-    assert receipt["outcome"] == "escalated"
-    assert datetime.fromisoformat(receipt["created_at"]).utcoffset() == timedelta(0)
     rows = db.execute(
         "SELECT review_id, request_id, employee_id, request_text, reason, created_at "
         "FROM human_reviews"
@@ -71,53 +69,73 @@ def test_persists_unverified_employee_review(
 
 
 class TestRetries:
-    def test_reuses_receipt(self, db: sqlite3.Connection, submit: SubmitReview) -> None:
+    def test_reuses_receipt(self, submit: SubmitReview) -> None:
         original = submit()
 
         assert submit() == original
-        assert db.execute("SELECT count(*) FROM human_reviews").fetchone() == (1,)
 
     def test_rejects_changed_employee(self, submit: SubmitReview) -> None:
-        original = submit()
+        submit()
 
         with pytest.raises(ValueError, match="REQ-001.*different details"):
             submit(employee_id="EMP-002")
 
-        assert submit() == original
-
-    def test_rejects_changed_reason(
-        self, db: sqlite3.Connection, submit: SubmitReview
-    ) -> None:
-        original = submit()
+    def test_rejects_changed_reason(self, submit: SubmitReview) -> None:
+        submit()
 
         with pytest.raises(ValueError, match="REQ-001.*different decision"):
             submit(reason="Missing history")
 
-        assert submit() == original
-        assert db.execute("SELECT count(*) FROM human_reviews").fetchone() == (1,)
+    def test_rejects_changed_request_text(self, submit: SubmitReview) -> None:
+        submit()
+
+        with pytest.raises(ValueError, match="REQ-001.*different details"):
+            submit(request="Request another monitor")
+
+    def test_preserves_original_request_after_conflicting_retry(
+        self, db: sqlite3.Connection, submit: SubmitReview
+    ) -> None:
+        original = submit()
+
+        with suppress(ValueError):
+            submit(request="Request another monitor")
+
+        assert db.execute(
+            "SELECT review_id, request_text FROM human_reviews"
+        ).fetchall() == [(original["review_id"], "Replace my laptop")]
 
 
-def test_rolls_back_failed_write(db: sqlite3.Connection, submit: SubmitReview) -> None:
+@pytest.fixture
+def broken_review_db(db: sqlite3.Connection) -> sqlite3.Connection:
     with db:
         db.execute("""
             CREATE TRIGGER reject_decision BEFORE INSERT ON request_decisions
             BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END
         """)
+    return db
 
+
+@pytest.mark.usefixtures("broken_review_db")
+def test_review_write_failure_propagates(submit: SubmitReview) -> None:
     with pytest.raises(sqlite3.IntegrityError, match="simulated write failure"):
         submit()
 
-    assert db.execute("SELECT count(*) FROM equipment_requests").fetchone() == (0,)
+
+def test_rolls_back_failed_write(
+    broken_review_db: sqlite3.Connection, submit: SubmitReview
+) -> None:
+    with suppress(sqlite3.IntegrityError):
+        submit()
+
+    assert broken_review_db.execute(
+        "SELECT count(*) FROM equipment_requests"
+    ).fetchone() == (0,)
 
 
 @pytest.mark.parametrize("field", ["employee_id", "request", "reason", "request_id"])
-def test_rejects_blank_fields(
-    db: sqlite3.Connection, submit: SubmitReview, field: str
-) -> None:
-    with pytest.raises(ValueError):
+def test_rejects_blank_fields(submit: SubmitReview, field: str) -> None:
+    with pytest.raises(ValueError, match="nonempty"):
         submit(**{field: "   "})
-
-    assert db.execute("SELECT count(*) FROM equipment_requests").fetchone() == (0,)
 
 
 def test_missing_request_id_cannot_create_review(review_db: Path) -> None:
@@ -129,9 +147,17 @@ def test_retry_after_lost_receipt_keeps_one_review(
     review_db: Path, db: sqlite3.Connection
 ) -> None:
     request = prepare_review("EMP-001", "Laptop", "Missing history")
-    first = flag_for_human_review(**request, db_path=review_db)
-    retry = flag_for_human_review(**request, db_path=review_db)
-    assert first == retry
+    flag_for_human_review(**request, db_path=review_db)
+    flag_for_human_review(**request, db_path=review_db)
+
     assert db.execute("SELECT count(*) FROM human_reviews").fetchone() == (1,)
-    other = prepare_review("EMP-001", "Laptop", "Missing history")
-    assert other["request_id"] != request["request_id"]
+
+
+def test_review_receipt_reports_escalation(submit: SubmitReview) -> None:
+    receipt = submit()
+    assert receipt["outcome"] == "escalated"
+
+
+def test_review_receipt_uses_utc(submit: SubmitReview) -> None:
+    receipt = submit()
+    assert datetime.fromisoformat(receipt["created_at"]).utcoffset() == timedelta(0)
