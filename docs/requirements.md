@@ -66,3 +66,15 @@ docker compose run --rm -T --env-from-file .env -e FOUNDRY_REASONING_EFFORT=none
 ```
 
 The runner prints one JSON object per attempt and a final summary. Use `--case` to select a scenario and `--repeat-boundaries` to set the repeat count for cases marked for repetition.
+
+## Reflection evaluation
+
+The paired eval uses the saved live ReAct report at `output/react-eval-live.jsonl`. It replays four supported drafts and four intentionally flawed drafts against the reviewer. Only the draft changes within each pair. The report scores flawed drafts released, supported drafts withheld, and median review time.
+
+Run from the repo root with `.env` configured:
+
+```sh
+docker compose run --rm -T --env-from-file .env dev python -m evals.reflection_eval > output/reflection-eval-live.jsonl
+```
+
+The runner prints one JSON object per review and a final summary. Use `--baseline` to select a saved Part 4 report. The replay makes model calls and uses the saved evidence, so it leaves employee and review records untouched.
