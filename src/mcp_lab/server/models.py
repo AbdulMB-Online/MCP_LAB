@@ -23,14 +23,14 @@ class Employee:
     start_date: date
     # None means the history is unknown. An empty tuple confirms no equipment.
     equipment_history: tuple[EquipmentAsset, ...] | None
+    partial_history: tuple[EquipmentAsset, ...] = ()
 
     def date_error(self, as_of: date) -> str | None:
         """Check the whole record before reporting equipment or evaluating policy."""
         if self.start_date > as_of:
             return "The employee record has a future start date."
-        if self.equipment_history and any(
-            asset.issued_on > as_of for asset in self.equipment_history
-        ):
+        known_assets = self.equipment_history or self.partial_history
+        if any(asset.issued_on > as_of for asset in known_assets):
             return "The equipment history contains a future issue date."
         return None
 

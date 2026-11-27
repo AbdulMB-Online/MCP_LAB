@@ -1,5 +1,6 @@
 """Test equipment eligibility decisions directly."""
 
+import re
 from dataclasses import replace
 from datetime import date
 from functools import partial
@@ -7,7 +8,6 @@ from functools import partial
 import pytest
 
 from mcp_lab.server.eligibility import check_request_eligibility
-from mcp_lab.server.equipment import get_employee_info
 from mcp_lab.server.models import (
     EligibilityDecision,
     Employee,
@@ -41,8 +41,7 @@ _check = partial(
 
 
 def _assert_review(decision: EligibilityDecision, reason: str) -> None:
-    assert decision["outcome"] == "escalated"
-    assert reason in decision["reason"]
+    assert (decision["outcome"], reason in decision["reason"]) == ("escalated", True)
 
 
 class TestIssuance:
@@ -104,6 +103,23 @@ class TestReplacement:
         )
         assert decision["outcome"] == "approved"
 
+    def test_approval_explains_what_to_do_with_old_asset(
+        self, employee: Employee
+    ) -> None:
+        record = replace(employee, equipment_history=(DUE_LAPTOP,))
+
+        decision = _check(
+            employee=record, request_kind="replacement", replacement_asset_id="LAP-100"
+        )
+
+        obligation = r"\b(?:must|requir\w*)\s+(?:be\s+)?return\w*\s+or\s+retir\w*\b"
+        reason = decision["reason"].lower()
+        assert (
+            decision["outcome"],
+            "lap-100" in reason,
+            bool(re.search(obligation, reason)),
+        ) == ("approved", True, True)
+
     @pytest.mark.parametrize(
         ("day", "outcome", "reason"),
         [
@@ -119,8 +135,7 @@ class TestReplacement:
             as_of=date(2026, 2, day),
         )
 
-        assert decision["outcome"] == outcome
-        assert reason in decision["reason"]
+        assert (decision["outcome"], reason in decision["reason"]) == (outcome, True)
 
     def test_reviews_unknown_asset(self) -> None:
         decision = _check(
@@ -184,10 +199,38 @@ class TestReviewReasons:
 
 
 @pytest.mark.parametrize("item", ["laptop", "gaming_console"])
-def test_future_monitor_blocks_both_tools(employee: Employee, item: str) -> None:
+def test_future_monitor_blocks_eligibility(employee: Employee, item: str) -> None:
     monitor = EquipmentAsset("MON-001", "monitor", date(2026, 11, 25), "active")
     record = replace(employee, equipment_history=(monitor,))
 
-    with pytest.raises(ValueError, match="future issue date"):
-        get_employee_info("EMP-001", employees={"EMP-001": record}, as_of=AS_OF)
     _assert_review(_check(employee=record, item=item), "future issue date")
+
+
+def test_invalid_replacement_interval_escalates(employee: Employee) -> None:
+    policy = replace(POLICIES[0], replacement_interval_years=0)
+    record = replace(employee, equipment_history=(DUE_LAPTOP,))
+    decision = _check(
+        employee=record,
+        policies=(policy,),
+        request_kind="replacement",
+        replacement_asset_id="LAP-100",
+    )
+    _assert_review(decision, "replacement interval is invalid")
+
+
+def test_replacement_beyond_supported_calendar_escalates(employee: Employee) -> None:
+    policy = replace(POLICIES[0], replacement_interval_years=10_000)
+    record = replace(employee, equipment_history=(DUE_LAPTOP,))
+    decision = _check(
+        employee=record,
+        policies=(policy,),
+        request_kind="replacement",
+        replacement_asset_id="LAP-100",
+    )
+    _assert_review(decision, "outside the supported calendar")
+
+
+def test_invalid_allocation_escalates(employee: Employee) -> None:
+    policy = replace(POLICIES[0], max_active_quantity=0)
+    decision = _check(employee=employee, policies=(policy,))
+    _assert_review(decision, "allocation policy is invalid")

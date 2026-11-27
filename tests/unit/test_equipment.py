@@ -52,7 +52,6 @@ class TestEmployeeLookup:
         result = _lookup("EMP-001", employees={"EMP-001": record})
 
         assets = result["current_equipment"]
-        assert assets is not None
         assert [asset["asset_id"] for asset in assets] == ["MON-001", "LAP-CURRENT"]
 
 

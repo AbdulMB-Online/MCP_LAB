@@ -26,6 +26,7 @@ tmp/
 
 # Local contributor instructions
 AGENTS.md
+/workflow breakdown.md
 
 # Local secrets; allow a future example file
 .env

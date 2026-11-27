@@ -31,31 +31,31 @@ def load_employee(db_path: Path, employee_id: str) -> Employee | None:
         if employee is None:
             return None
 
-        equipment_history = None
-        if employee["equipment_history_status"] == "complete":
-            assets = connection.execute(
-                """
-                SELECT asset_id, item, issued_on, status
-                FROM equipment_assets
-                WHERE employee_id = ?
-                ORDER BY issued_on, asset_id
-                """,
-                (employee_id,),
+        assets = connection.execute(
+            """
+            SELECT asset_id, item, issued_on, status
+            FROM equipment_assets
+            WHERE employee_id = ?
+            ORDER BY issued_on, asset_id
+            """,
+            (employee_id,),
+        )
+        known_history = tuple(
+            EquipmentAsset(
+                asset_id=asset["asset_id"],
+                item=asset["item"],
+                issued_on=date.fromisoformat(asset["issued_on"]),
+                status=asset["status"],
             )
-            equipment_history = tuple(
-                EquipmentAsset(
-                    asset_id=asset["asset_id"],
-                    item=asset["item"],
-                    issued_on=date.fromisoformat(asset["issued_on"]),
-                    status=asset["status"],
-                )
-                for asset in assets
-            )
+            for asset in assets
+        )
 
+        complete = employee["equipment_history_status"] == "complete"
         return Employee(
             role=employee["role"],
             start_date=date.fromisoformat(employee["start_date"]),
-            equipment_history=equipment_history,
+            equipment_history=known_history if complete else None,
+            partial_history=() if complete else known_history,
         )
 
 

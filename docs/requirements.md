@@ -34,7 +34,9 @@ A future start date or issue date anywhere in the employee record blocks an auto
 
 Persist each escalation with a review ID, supplied employee ID, request, reason, and timestamp, even when employee identity is unverified. Confirm escalation only after storage succeeds. Tool failures must prevent unsupported decisions.
 
-Assign a request ID at intake. For manual calls, run the client's `prepare-review` command once and save its JSON. Send that same JSON to `flag_for_human_review` on each attempt, including after a timeout. A separate request receives its own ID even if the text is identical.
+Assign a request ID at intake. The agent retries a timed-out review write once with the original payload. If you rerun the agent for the same request, pass `--request-id` with the original ID. For direct tool calls, run `prepare-review` once and reuse its JSON. A separate request receives its own ID even if the text is identical.
+
+The agent verifies explicit first-issue, additional, and replacement requests before using the model's eligibility arguments. Use phrases such as “Can I get my first work laptop?”, “I need a second monitor”, and “Replace my damaged laptop LAP-002”. A clear gaming-console request can receive the role's policy denial. Requests outside these supported forms go to review.
 
 ## Demonstrations and Testing
 
@@ -46,3 +48,19 @@ Assign a request ID at intake. For manual calls, run the client's `prepare-revie
 | Escalate | Missing equipment history |
 
 Follow TDD one unit-test case at a time before MCP registration, including boundaries and data integrity. Verify employee-lookup-only connectivity before adding tools. Final evidence includes four traces/responses, escalation reasons, reflection, and passing CI with tests enabled.
+
+## ReAct evaluation
+
+Run the 26 scripted scenarios from the repo root. The runner gives each attempt its own seeded SQLite database and scores the decision, reason, tool arguments, and review persistence.
+
+```sh
+docker compose run --rm -T dev python -m evals.react_eval
+```
+
+For a live Foundry run, put the deployment settings in `.env`. The command below uses `reasoning_effort=none` for tool calls on the lab's GPT-6.1 Terra deployment.
+
+```sh
+docker compose run --rm -T --env-from-file .env -e FOUNDRY_REASONING_EFFORT=none dev python -m evals.react_eval --live
+```
+
+The runner prints one JSON object per attempt and a final summary. Use `--case` to select a scenario and `--repeat-boundaries` to set the repeat count for cases marked for repetition.

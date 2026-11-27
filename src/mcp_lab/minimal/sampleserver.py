@@ -13,9 +13,13 @@ def ping() -> str:
     return "pong"
 
 
-if __name__ == "__main__":
+def main() -> None:
     server.run(
         transport="streamable-http",
         host=os.environ.get("MCP_HOST", "127.0.0.1"),
         port=int(os.environ.get("MCP_PORT", "8000")),
     )
+
+
+if __name__ == "__main__":
+    main()
