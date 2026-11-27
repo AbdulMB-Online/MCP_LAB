@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock
 import pytest
 from mcp.types import CallToolResult
 
-from mcp_lab.agent import run_react
+from mcp_lab.agent import run_react, run_tool_loop
+from mcp_lab.reviewer import ReviewerAgent
 from mcp_lab.server.app import EquipmentTools, create_server
 from mcp_lab.server.database import initialize_database
 
@@ -321,6 +322,58 @@ def test_wrong_item_cannot_turn_a_policy_denial_into_an_approval(
                 "EMP-001",
                 request_text,
                 "The proposed equipment details do not match the request.",
+            )
+        ],
+    )
+
+
+def test_reviewer_retry_preserves_the_committed_receipt(
+    workflow_client, workflow_database: Path
+) -> None:
+    eligibility_turn = _eligibility("EMP-003", "laptop", "first_issue")
+    equipment_model = AsyncMock(side_effect=[eligibility_turn, eligibility_turn])
+    reviewer_model = AsyncMock(
+        side_effect=[
+            {
+                "content": '{"verdict":"needs_evidence","reason":"Recheck equipment history."}'
+            },
+            {
+                "content": '{"verdict":"confirmed","reason":"The original receipt is supported."}'
+            },
+        ]
+    )
+
+    async def run() -> dict:
+        async with workflow_client() as client:
+            return await run_tool_loop(
+                client,
+                equipment_model,
+                "EMP-003",
+                FIRST_LAPTOP,
+                request_id=REQUEST_ID,
+                reviewer=ReviewerAgent(reviewer_model),
+            )
+
+    result = asyncio.run(run())
+    receipt = result["review"]
+    retry_message = json.loads(equipment_model.await_args.args[0][-1]["content"])
+
+    assert (
+        retry_message["reviewer_feedback"]["reason"],
+        result["reflection"],
+        [step["tool"] for step in result["retry_trace"]],
+        _reviews(workflow_database),
+    ) == (
+        "Recheck equipment history.",
+        "confirmed",
+        ["check_request_eligibility"],
+        [
+            (
+                receipt["review_id"],
+                REQUEST_ID,
+                "EMP-003",
+                FIRST_LAPTOP,
+                receipt["reason"],
             )
         ],
     )

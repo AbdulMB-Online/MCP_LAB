@@ -15,7 +15,8 @@ from mcp.types import (
     Tool,
 )
 
-from mcp_lab.agent import run_react
+from mcp_lab.agent import run_react, run_tool_loop
+from mcp_lab.reviewer import ReviewerAgent
 
 EMPLOYEE_ID = "EMP-001"
 REQUEST = "Can I get my first work laptop?"
@@ -531,3 +532,186 @@ def test_additional_monitor_uses_the_explicit_request_intent(
     asyncio.run(run_react(mcp_client, model, EMPLOYEE_ID, "I need a second monitor."))
 
     mcp_client.call_tool.assert_awaited_once_with(ELIGIBILITY, arguments)
+
+
+CONFIRMED = {
+    "role": "assistant",
+    "content": '{"verdict":"confirmed","reason":"Supported by the evidence."}',
+}
+
+
+def test_flagged_draft_is_withheld(mcp_client: AsyncMock) -> None:
+    mcp_client.call_tool.return_value = _result(
+        outcome="approved", reason="Within policy."
+    )
+    model = AsyncMock(
+        side_effect=[
+            _tool_turn(ELIGIBILITY, FIRST_LAPTOP),
+            {
+                "role": "assistant",
+                "content": '{"verdict":"flagged","reason":"The draft overstates the evidence."}',
+            },
+        ]
+    )
+
+    result = asyncio.run(run_tool_loop(mcp_client, model, EMPLOYEE_ID, REQUEST))
+
+    assert (result["draft"], result["reflection_reason"], model.await_count) == (
+        None,
+        "The draft overstates the evidence.",
+        2,
+    )
+
+
+MORE_EVIDENCE = {
+    "content": '{"verdict":"needs_evidence","reason":"Verify the equipment history."}'
+}
+
+
+def test_second_request_for_more_evidence_withholds_draft(
+    mcp_client: AsyncMock,
+) -> None:
+    mcp_client.call_tool.return_value = _result(
+        outcome="approved", reason="Within policy."
+    )
+    equipment_model = AsyncMock(side_effect=[_tool_turn(ELIGIBILITY, FIRST_LAPTOP)] * 2)
+    review_model = AsyncMock(side_effect=[MORE_EVIDENCE, MORE_EVIDENCE])
+
+    result = asyncio.run(
+        run_tool_loop(
+            mcp_client,
+            equipment_model,
+            EMPLOYEE_ID,
+            REQUEST,
+            reviewer=ReviewerAgent(review_model),
+        )
+    )
+
+    assert (
+        result["reflection"],
+        result["draft"],
+        equipment_model.await_count,
+        review_model.await_count,
+    ) == ("needs_evidence", None, 2, 2)
+
+
+def test_new_escalation_after_retry_uses_the_original_request_id(
+    mcp_client: AsyncMock,
+) -> None:
+    mcp_client.call_tool.side_effect = [
+        _result(outcome="approved", reason="Within policy."),
+        _result(outcome="escalated", reason="Equipment history is unavailable."),
+        _review_result("Equipment history is unavailable."),
+    ]
+    equipment_model = AsyncMock(side_effect=[_tool_turn(ELIGIBILITY, FIRST_LAPTOP)] * 2)
+    review_model = AsyncMock(side_effect=[MORE_EVIDENCE, CONFIRMED])
+
+    result = asyncio.run(
+        run_tool_loop(
+            mcp_client,
+            equipment_model,
+            EMPLOYEE_ID,
+            REQUEST,
+            request_id="REQ-1",
+            reviewer=ReviewerAgent(review_model),
+        )
+    )
+
+    assert (
+        result["decision"]["outcome"],
+        result["review"]["request_id"],
+        result["reflection"],
+    ) == ("escalated", "REQ-1", "confirmed")
+
+
+@pytest.mark.parametrize(
+    "failure_at", ["review", "retry"], ids=["review-timeout", "retry-timeout"]
+)
+def test_reflection_timeout_keeps_the_committed_receipt(
+    mcp_client: AsyncMock, failure_at: str
+) -> None:
+    reason = "Equipment history is unavailable."
+    mcp_client.call_tool.side_effect = [
+        _result(outcome="escalated", reason=reason),
+        _review_result(reason),
+    ]
+    equipment_model = AsyncMock(
+        side_effect=[_tool_turn(ELIGIBILITY, FIRST_LAPTOP), TimeoutError()]
+    )
+    review_model = AsyncMock(
+        side_effect=[TimeoutError() if failure_at == "review" else MORE_EVIDENCE]
+    )
+
+    result = asyncio.run(
+        run_tool_loop(
+            mcp_client,
+            equipment_model,
+            EMPLOYEE_ID,
+            REQUEST,
+            request_id="REQ-1",
+            reviewer=ReviewerAgent(review_model),
+        )
+    )
+
+    assert (result["review"]["review_id"], result["reflection"], result["draft"]) == (
+        "REV-1",
+        "unavailable",
+        None,
+    )
+
+
+def test_request_with_no_supported_intent_cannot_trigger_a_tool_retry(
+    mcp_client: AsyncMock,
+) -> None:
+    mcp_client.call_tool.return_value = _review_result(
+        "The request does not identify one supported item and intent."
+    )
+    equipment_model = AsyncMock(side_effect=AssertionError("Unexpected model turn"))
+    review_model = AsyncMock(side_effect=[MORE_EVIDENCE])
+
+    result = asyncio.run(
+        run_tool_loop(
+            mcp_client,
+            equipment_model,
+            EMPLOYEE_ID,
+            "I need a laptop.",
+            request_id="REQ-1",
+            reviewer=ReviewerAgent(review_model),
+        )
+    )
+
+    assert (result["reflection"], result["draft"], equipment_model.await_count) == (
+        "needs_evidence",
+        None,
+        0,
+    )
+
+
+def test_read_only_retry_does_not_replace_a_committed_escalation(
+    mcp_client: AsyncMock,
+) -> None:
+    original = {"outcome": "escalated", "reason": "Equipment history is unavailable."}
+    mcp_client.call_tool.side_effect = [
+        _result(**original),
+        _review_result(original["reason"]),
+        _result(outcome="approved", reason="Within policy."),
+    ]
+    equipment_model = AsyncMock(side_effect=[_tool_turn(ELIGIBILITY, FIRST_LAPTOP)] * 2)
+    review_model = AsyncMock(side_effect=[MORE_EVIDENCE, CONFIRMED])
+
+    result = asyncio.run(
+        run_tool_loop(
+            mcp_client,
+            equipment_model,
+            EMPLOYEE_ID,
+            REQUEST,
+            request_id="REQ-1",
+            reviewer=ReviewerAgent(review_model),
+        )
+    )
+
+    assert (
+        result["decision"],
+        result["review"]["review_id"],
+        mcp_client.call_tool.await_count,
+    ) == (original, "REV-1", 3)

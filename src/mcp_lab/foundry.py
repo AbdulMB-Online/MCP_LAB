@@ -1,11 +1,15 @@
 """Use a Microsoft Foundry v1 Chat Completions deployment for tool selection."""
 
 import os
+from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import urlsplit
 
 from httpx2 import AsyncClient
 from mcp.types import Tool
+
+type Message = dict[str, Any]
+type ChooseTurn = Callable[[list[Message], list[Tool]], Awaitable[Message]]
 
 
 class FoundryModel:
