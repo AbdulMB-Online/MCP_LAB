@@ -38,6 +38,8 @@ Assign a request ID at intake. The agent retries a timed-out review write once w
 
 The agent verifies explicit first-issue, additional, and replacement requests before using the model's eligibility arguments. Use phrases such as “Can I get my first work laptop?”, “I need a second monitor”, and “Replace my damaged laptop LAP-002”. A clear gaming-console request can receive the role's policy denial. Requests outside these supported forms go to review.
 
+The reviewer starts a fresh model conversation with the exact draft, original request, policy decision, tool observations, and any saved review receipt. It gives a verdict and reason without calling tools. Only a confirmed draft is released. A request for more evidence can trigger one more investigation. An existing review stays authoritative, and a failed check still returns its receipt.
+
 ## Demonstrations and Testing
 
 | Outcome | Example |

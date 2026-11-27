@@ -40,7 +40,7 @@ def test_foundry_cli_passes_employee_and_request(
     monkeypatch.setattr(agent.FoundryModel, "from_environment", lambda http: model)
     monkeypatch.setattr(agent, "Client", lambda url: cli_client)
     loop = AsyncMock(return_value={"draft": "Policy response"})
-    monkeypatch.setattr(agent, "run_react", loop)
+    monkeypatch.setattr(agent, "run_tool_loop", loop)
     monkeypatch.setattr(
         sys,
         "argv",
